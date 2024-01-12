@@ -63,11 +63,11 @@ def translate_recipe_yields_to_categories(s):
         return "Undefined"
     result_list = s.split()
     for value in result_list[:1]:
-        print(value)
+        #print(value)
         if value.find("-") != -1:
             value = s.split("-")[0]
-            print("update")
-            print(value)
+            #print("update")
+            #print(value)
         fraction_obj = Fraction(value)
         val_int: float = float(fraction_obj)
         if val_int == 1:
@@ -99,7 +99,7 @@ def clean_recipes():
 
     print("this step takes time please wait")
     for search_string in df_ingredients:
-        print(search_string)
+        #print(search_string)
         xy = df_recipes['RecipeIngredientParts'].apply(lambda x: x.count(search_string))
         new_entry = {"ingredient": search_string, "count": xy.sum()}
         df_count_ingredients.loc[len(df_count_ingredients)] = new_entry
@@ -121,7 +121,7 @@ def clean_recipes():
                 except:
                     continue
 
-    print("done with ingredients")
+    #print("done with ingredients")
     # fill na
     df_recipes["RecipeServings"] = df_recipes["RecipeServings"].fillna(0)
 
@@ -203,8 +203,8 @@ def rename_columns():
     # rename columns
     df_requests.rename(columns=lambda x: "requests_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
     df_reviews.rename(columns=lambda x: "reviews_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
-    df_recipes.rename(columns=lambda x: x + "recipes_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
-    df_diet.rename(columns=lambda x: x + "diet_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
+    df_recipes.rename(columns=lambda x: "recipes_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
+    df_diet.rename(columns=lambda x: "diet_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
 
 
 def merge_df():
@@ -212,15 +212,16 @@ def merge_df():
     global df_recipes
     global df_reviews
     global df_requests
+    
     # join the dataframes
     df_1 = pd.merge(df_diet, df_reviews, on="AuthorId", how="inner")
     df_2 = pd.merge(df_1, df_recipes, on="RecipeId", how="inner")
-    df_final = pd.merge(df_2, df_requests, on=["AuthorId", "RecipeId"], how="inner")
+    df_merged = pd.merge(df_2, df_requests, on=["AuthorId", "RecipeId"], how="inner")
 
-    df_final = df_final.drop('AuthorId', axis=1)
-    df_final = df_final.drop('RecipeId', axis=1)
-
-    df_final.to_pickle('cleaned_dataset.pkl')
+    df_merged = df_merged.drop('AuthorId', axis=1)
+    df_merged = df_merged.drop('RecipeId', axis=1)
+    
+    return df_merged
 
 
 def main():
@@ -228,20 +229,34 @@ def main():
     np.random.seed(seed)
 
     # clean diet
+    print("start cleaning diet")
     clean_diet()
     print("done cleaning diet")
 
     # clean recipes
+    print("start cleaning recipes")
     clean_recipes()
     print("done cleaning recipes")
 
     #clean request
+    print("start cleaning requests")
     clean_requests()
     print("done cleaning requests")
 
+    #rename columns
+    print("start renaming columns")
+    rename_columns()
+    print("done renaming columns")
+    
     #merge
-    merge_df()
+    print("start merging")
+    df_final = merge_df()
     print("done merging")
+    
+    #save as pickle
+    df_final.to_pickle('cleaned_dataset.pkl')
+    print("done saving as pickle")
+    
 
     # check results
     df_final = pd.read_pickle('cleaned_dataset.pkl')
