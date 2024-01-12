@@ -14,18 +14,21 @@ df_requests = pd.read_csv(file_path_requests)
 df_reviews = pd.read_csv(file_path_reviews)
 df_recipes = pd.read_csv(file_path_recipes)
 df_diet = pd.read_csv(file_path_diet)
+df_test_reviews = None
 
 #clean reviews
 def split_reviews():
-    global df_reviews
-    df_test_data = df_reviews[df_reviews["Like"].isna()]
-    df_test_data.to_csv("test_data.csv")
-    df_reviews = df_reviews.dropna(subset=["Like"])
+    global df_test_reviews
+    df_test_reviews = df_reviews[df_reviews["Like"].isna()]
+    df_test_reviews.dropna(subset=["TestSetId"], inplace=True)
+    df_test_reviews.drop("Like", axis=1, inplace=True)
+    df_test_reviews.to_csv("test_reviews.csv")
     
 def clean_reviews():
     global df_reviews
     split_reviews()
-    df_reviews.drop(columns=["TestSetId"], inplace=True)
+    df_reviews.dropna(subset=["Like"], inplace=True)
+    df_reviews.drop("TestSetId", axis=1, inplace=True)
     
 
 #clean diet
@@ -197,7 +200,7 @@ def rename_columns():
     df_diet.rename(columns=lambda x: "diet_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
 
 
-def merge_df():
+def merge_training_df():
     global df_diet
     global df_recipes
     global df_reviews
@@ -210,9 +213,27 @@ def merge_df():
 
     df_merged = df_merged.drop('AuthorId', axis=1)
     df_merged = df_merged.drop('RecipeId', axis=1)
+    df_merged.dropna(inplace=True)
     
     return df_merged
 
+def merge_test_df():
+    global df_diet
+    global df_recipes
+    global df_requests
+    global df_test_reviews
+    
+    df_1 = pd.merge(df_diet, df_test_reviews, on="AuthorId", how="inner")
+    df_2 = pd.merge(df_1, df_recipes, on="RecipeId", how="inner")
+    df_merged = pd.merge(df_2, df_requests, on=["AuthorId", "RecipeId"], how="inner")
+
+    df_merged = df_merged.drop('AuthorId', axis=1)
+    df_merged = df_merged.drop('RecipeId', axis=1)
+    df_merged.dropna(inplace=True)
+    
+    return df_merged
+    
+    
 
 def main():
     seed = 2024
@@ -223,15 +244,15 @@ def main():
     clean_diet()
     print("done cleaning diet")
 
-    # clean recipes
-    print("start cleaning recipes")
-    clean_recipes()
-    print("done cleaning recipes")
-    
     #clean reviews
     print("start cleaning reviews")
     clean_reviews()
     print("done cleaning reviews")
+
+    # clean recipes
+    print("start cleaning recipes")
+    clean_recipes()
+    print("done cleaning recipes")
 
     #clean request
     print("start cleaning requests")
@@ -245,19 +266,22 @@ def main():
     
     #merge
     print("start merging")
-    df_final = merge_df()
+    df_training = merge_training_df()
+    df_test = merge_test_df()
     print("done merging")
     
     #save as pickle
-    df_final.to_pickle('cleaned_dataset.pkl')
-    df_final.to_csv('cleaned_dataset.csv')
+    df_training.to_pickle('cleaned_training_dataset.pkl')
+    df_training.to_csv('cleaned_training_dataset.csv')
+    df_test.to_pickle('cleaned_test_dataset.pkl')
+    df_test.to_csv('cleaned_test_dataset.csv')
     print("done saving as pickle")
     
 
     # check results
-    df_final = pd.read_pickle('cleaned_dataset.pkl')
-    print(df_final.head())
-    print(df_final.info())
+    df_training = pd.read_pickle('cleaned_training_dataset.pkl')
+    print(df_training.head())
+    print(df_training.info())
 
 
 if __name__ == "__main__":
