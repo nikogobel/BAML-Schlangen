@@ -15,6 +15,18 @@ df_reviews = pd.read_csv(file_path_reviews)
 df_recipes = pd.read_csv(file_path_recipes)
 df_diet = pd.read_csv(file_path_diet)
 
+#clean reviews
+def split_reviews():
+    global df_reviews
+    df_test_data = df_reviews[df_reviews["Like"].isna()]
+    df_test_data.to_csv("test_data.csv")
+    df_reviews = df_reviews.dropna(subset=["Like"])
+    
+def clean_reviews():
+    global df_reviews
+    split_reviews()
+    df_reviews.drop(columns=["TestSetId"], inplace=True)
+    
 
 #clean diet
 def clean_diet():
@@ -22,11 +34,6 @@ def clean_diet():
     df_diet = df_diet.dropna(subset=["Diet"])
     df_diet["Diet"] = df_diet["Diet"].astype("category")
     df_diet["AuthorId"] = df_diet["AuthorId"].astype("string")
-    """ df_diet.rename(columns={
-        'Diet': 'Author_Diet',
-        'Age': 'Author_Age',
-    }, inplace=True)
-    return df_diet """
 
 
 #extract list from
@@ -160,23 +167,6 @@ def clean_recipes():
     max_value_index = df_recipes["ProteinContent"].idxmax()
     df_recipes = df_recipes.drop(index=max_value_index).reset_index(drop=True)
 
-    # rename columns
-    """ df_recipes.rename(columns={
-        'CookTime': 'Recipe_CookTime',
-        'PrepTime': 'Recipe_PrepTime',
-        'Calories': 'Recipe_Calories',
-        'FatContent': 'Recipe_FatContent',
-        'SaturatedFatContent': 'Recipe_SaturatedFatContent',
-        'CholesterolContent': 'Recipe_CholesterolContent',
-        'SodiumContent': 'Recipe_SodiumContent',
-        'CarbohydrateContent': 'Recipe_CarbohydrateContent',
-        'FiberContent': 'Recipe_FiberContent',
-        'SugarContent': 'Recipe_SugarContent',
-        'ProteinContent': 'Recipe_ProteinContent',
-        'RecipeServings': 'Recipe_RecipeServings',
-        'RecipeYield': 'Recipe_RecipeYield',
-    }, inplace=True)
-    return df_recipes """
 
 
 def clean_requests():
@@ -237,6 +227,11 @@ def main():
     print("start cleaning recipes")
     clean_recipes()
     print("done cleaning recipes")
+    
+    #clean reviews
+    print("start cleaning reviews")
+    clean_reviews()
+    print("done cleaning reviews")
 
     #clean request
     print("start cleaning requests")
@@ -255,6 +250,7 @@ def main():
     
     #save as pickle
     df_final.to_pickle('cleaned_dataset.pkl')
+    df_final.to_csv('cleaned_dataset.csv')
     print("done saving as pickle")
     
 

@@ -17,16 +17,23 @@ non_numeric_cols = df.select_dtypes(include=['object', 'category']).columns
 df = pd.get_dummies(df, columns=non_numeric_cols, drop_first=True)
 df = df.dropna()
 
+df.to_csv('cleaned_dataset_noNA.csv')
+
+print("Label Balancing in Train Set:\n", df['reviews_Like_True'].value_counts(normalize=True))
+
 train_model = RandomForestClassifier(n_estimators=5, max_features=3, random_state=2023+2024)
 
 
 X = df.drop(columns=['reviews_Like_True'])
 y = df['reviews_Like_True']
 
+
+
 train_model.fit(X,y)
 print("done fitting")
 
 pred = train_model.predict(X)
+
 error_rate = np.mean(y != pred)
 print("Error rate:", error_rate)
 print("Accuracy:", accuracy_score(y, pred))
