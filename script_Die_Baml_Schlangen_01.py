@@ -22,11 +22,11 @@ def clean_diet():
     df_diet = df_diet.dropna(subset=["Diet"])
     df_diet["Diet"] = df_diet["Diet"].astype("category")
     df_diet["AuthorId"] = df_diet["AuthorId"].astype("string")
-    df_diet.rename(columns={
+    """ df_diet.rename(columns={
         'Diet': 'Author_Diet',
         'Age': 'Author_Age',
     }, inplace=True)
-    return df_diet
+    return df_diet """
 
 
 #extract list from
@@ -161,7 +161,7 @@ def clean_recipes():
     df_recipes = df_recipes.drop(index=max_value_index).reset_index(drop=True)
 
     # rename columns
-    df_recipes.rename(columns={
+    """ df_recipes.rename(columns={
         'CookTime': 'Recipe_CookTime',
         'PrepTime': 'Recipe_PrepTime',
         'Calories': 'Recipe_Calories',
@@ -176,27 +176,35 @@ def clean_recipes():
         'RecipeServings': 'Recipe_RecipeServings',
         'RecipeYield': 'Recipe_RecipeYield',
     }, inplace=True)
-    return df_recipes
+    return df_recipes """
 
 
 def clean_requests():
     global df_requests
-    df_requests.rename(columns=lambda x: x + "_requests" if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
-    df_reviews.rename(columns=lambda x: x + "_reviews" if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
-    df_recipes.rename(columns=lambda x: x + "_recipes" if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
-    df_diet.rename(columns=lambda x: x + "_diet" if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
-
+    
     # convert the data types to category
-    df_requests["HighCalories_requests"] = df_requests["HighCalories_requests"].astype(int)
-    df_requests["HighCalories_requests"] = df_requests["HighCalories_requests"].astype("category")
+    df_requests["HighCalories"] = df_requests["HighCalories"].astype(int)
+    df_requests["HighCalories"] = df_requests["HighCalories"].astype("category")
 
-    df_requests["HighProtein_requests"] = df_requests["HighProtein_requests"].astype("category")
+    df_requests["HighProtein"] = df_requests["HighProtein"].astype("category")
 
-    df_requests["LowFat_requests"] = df_requests["LowFat_requests"].astype("category")
+    df_requests["LowFat"] = df_requests["LowFat"].astype("category")
 
-    df_requests["LowSugar_requests"] = df_requests["LowSugar_requests"].astype("category")
+    df_requests["LowSugar"] = df_requests["LowSugar"].astype("category")
 
-    df_requests["HighFiber_requests"] = df_requests["HighFiber_requests"].astype("category")
+    df_requests["HighFiber"] = df_requests["HighFiber"].astype("category")
+    
+def rename_columns():
+    global df_diet
+    global df_recipes
+    global df_reviews
+    global df_requests
+    
+    # rename columns
+    df_requests.rename(columns=lambda x: "requests_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
+    df_reviews.rename(columns=lambda x: "reviews_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
+    df_recipes.rename(columns=lambda x: x + "recipes_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
+    df_diet.rename(columns=lambda x: x + "diet_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
 
 
 def merge_df():
