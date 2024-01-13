@@ -22,12 +22,14 @@ def split_reviews():
     df_test_reviews = df_reviews[df_reviews["Like"].isna()]
     df_test_reviews.dropna(subset=["TestSetId"], inplace=True)
     df_test_reviews.drop("Like", axis=1, inplace=True)
+    df_test_reviews['Rating'] = df_test_reviews['Rating'].fillna(0)
     df_test_reviews.to_csv("test_reviews.csv")
     
 def clean_reviews():
     global df_reviews
     split_reviews()
     df_reviews.dropna(subset=["Like"], inplace=True)
+    df_reviews['Rating'] = df_reviews['Rating'].fillna(0)
     df_reviews.drop("TestSetId", axis=1, inplace=True)
     
 
@@ -196,6 +198,7 @@ def rename_columns():
     # rename columns
     df_requests.rename(columns=lambda x: "requests_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
     df_reviews.rename(columns=lambda x: "reviews_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
+    df_test_reviews.rename(columns=lambda x: "reviews_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
     df_recipes.rename(columns=lambda x: "recipes_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
     df_diet.rename(columns=lambda x: "diet_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
 
@@ -229,6 +232,9 @@ def merge_test_df():
 
     df_merged = df_merged.drop('AuthorId', axis=1)
     df_merged = df_merged.drop('RecipeId', axis=1)
+    df_test_set_id = df_merged["reviews_TestSetId"]
+    df_test_set_id.to_csv("test_set_id.csv")
+    df_merged = df_merged.drop('reviews_TestSetId', axis=1)
     df_merged.dropna(inplace=True)
     
     return df_merged
