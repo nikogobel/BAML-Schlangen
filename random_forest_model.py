@@ -44,6 +44,7 @@ test_pred = train_model.predict(df_test)
 df_index['test_pred'] = test_pred
 
 df_submission['prediction'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(df_submission['id']).values
+df_submission['prediction'] = df_submission['prediction'].fillna(False)
 
 print(df_submission.info())
 df_submission.to_csv('submission.csv', index=False)
