@@ -26,6 +26,7 @@ train_model = RandomForestClassifier(n_estimators=5, max_features=3, random_stat
 X_train = df_train.drop(columns=['reviews_Like_True'])
 y_train = df_train['reviews_Like_True']
 
+#fit model
 train_model.fit(X_train,y_train)
 print("done fitting")
 
