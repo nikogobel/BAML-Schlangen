@@ -4,7 +4,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
 import matplotlib.pyplot as plt
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import GridSearchCV
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
+#prepare data
 df_train = pd.read_pickle('cleaned_training_dataset.pkl')
 df_test = pd.read_pickle('cleaned_test_dataset.pkl')
 df_index = pd.read_csv('test_set_id.csv')
@@ -19,36 +27,127 @@ non_numeric_cols_test = df_test.select_dtypes(include=['object', 'category']).co
 df_train = pd.get_dummies(df_train, columns=non_numeric_cols_train, drop_first=True)
 df_test = pd.get_dummies(df_test, columns=non_numeric_cols_test, drop_first=True)
 
+df_train_x = df_train.drop(columns=['reviews_Like_True'])
+df_train_y = df_train['reviews_Like_True']
 
-train_model = RandomForestClassifier(n_estimators=5, max_features=3, random_state=2023+2024)
+X_train, X_test, y_train, y_test = \
+  train_test_split(df_train_x, df_train_y,
+                   test_size=0.3,
+                   shuffle=True,
+                   random_state=3)
 
-#create X and y for training
-X_train = df_train.drop(columns=['reviews_Like_True'])
-y_train = df_train['reviews_Like_True']
+# data scaling
+transform_scaler = StandardScaler()
+
+# dimensionality reduction
+transform_pca = PCA()
+
+
 
 #fit model
-train_model.fit(X_train,y_train)
-print("done fitting")
+#train_model = RandomForestClassifier(n_estimators=5, max_features=3, random_state=2023+2024)
+#train_model.fit(X_train,y_train)
+
+model_logistic_regression = LogisticRegression(max_iter=30)
+model_random_forest = RandomForestClassifier()
+model_gradient_boosting = GradientBoostingClassifier()
+model_first_try_random_forest = RandomForestClassifier()
+
+# train the models
+pipeline = Pipeline(steps=[("scaler", transform_scaler),
+                           ("pca", transform_pca),
+                           ("model", None)])
+
+parameter_grid_preprocessing = {
+  "pca__n_components" : [15, 20],
+}
+
+parameter_grid_logistic_regression = {
+  "model" : [model_logistic_regression],
+  "model__C" : [0.1, 10, 20],  # inverse regularization strength
+}
+
+parameter_grid_gradient_boosting = {
+  "model" : [model_gradient_boosting],
+  "model__n_estimators" : [50, 60]
+}
+
+parameter_grid_random_forest = {
+  "model" : [model_random_forest],
+  "model__n_estimators" : [10, 20, 50],  # number of max trees in the forest
+  "model__max_depth" : [2, 3, 10],
+}
+
+parameter_model_first_try_random_forest = {
+  "model" : [model_first_try_random_forest],
+  "model__n_estimators" : [5],  # number of max trees in the forest
+  "model__max_depth" : [3],
+}
+
+meta_parameter_grid = [parameter_grid_logistic_regression,
+                       parameter_grid_random_forest,
+                       parameter_grid_gradient_boosting,
+                       parameter_model_first_try_random_forest]
+
+meta_parameter_grid = [{**parameter_grid_preprocessing, **model_grid}
+                       for model_grid in meta_parameter_grid]
+
+search = GridSearchCV(pipeline,
+                      meta_parameter_grid,
+                      scoring="balanced_accuracy",
+                      n_jobs=2,
+                      cv=5,  # number of folds for cross-validation
+                      error_score="raise"
+)
+
+# here, the actual training and grid search happens
+search.fit(X_train, y_train.values.ravel())
+
+print("best parameter:", search.best_params_ ,"(CV score=%0.3f)" % search.best_score_)
+
+print("\nOverall model outcomes")
+results = search.cv_results_
+for mean_score, params in zip(results['mean_test_score'], results['params']):
+    print(f"Accuracy: {mean_score:.4f}, Parameters: {params}")
+
+
 
 #predict on training set
-pred = train_model.predict(X_train)
-
-#calculate accuracy on training set
+pred = search.best_estimator_.predict(X_train)
 error_rate = np.mean(y_train != pred)
-print("Error rate:", error_rate)
-print("Accuracy:", accuracy_score(y_train, pred))
+print("Train Error rate:", error_rate)
+print("Train Accuracy:", accuracy_score(y_train, pred))
+
+#validate the model
+pred_val = search.best_estimator_.predict(X_test)
+error_rate = np.mean(y_test != pred_val)
+print("Validation Error rate:", error_rate)
+print("Validation Accuracy:", accuracy_score(y_test, pred_val))
+
+print("Score on validation set:", search.score(X_test, y_test.values.ravel()))
+
+# contingency table
+print("\nValidation set analysis")
+ct = pd.crosstab(pred_val, y_test.values.ravel(),
+                 rownames=["pred"], colnames=["true"])
+print(ct)
+print("\n")
 
 #predict on test set
-test_pred = train_model.predict(df_test)
+test_pred = search.best_estimator_.predict(df_test)
 
 #match predictions with index
 df_index['test_pred'] = test_pred
 df_submission['prediction'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(df_submission['id']).values
+#print(df_submission.info())
 df_submission['prediction'] = df_submission['prediction'].fillna(False)
 
 #save submission
-print(df_submission.info())
-df_submission.to_csv('submission.csv', index=False)
+df_submission['prediction'] = df_submission['prediction'].replace({
+    True: 1,
+    False: 0
+})
+df_submission.to_csv('predictions_BAML_Schlangen_1.csv', index=False)
 
 
 

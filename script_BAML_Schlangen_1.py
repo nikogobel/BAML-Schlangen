@@ -1,8 +1,11 @@
 import pandas as pd
 import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
+import matplotlib.pyplot as plt
 from fractions import Fraction
 import json
-
 
 # load the data
 file_path_requests = "requests.csv"
@@ -16,7 +19,8 @@ df_recipes = pd.read_csv(file_path_recipes)
 df_diet = pd.read_csv(file_path_diet)
 df_test_reviews = None
 
-#clean reviews
+
+# clean reviews
 def split_reviews():
     global df_test_reviews
     df_test_reviews = df_reviews[df_reviews["Like"].isna()]
@@ -24,16 +28,17 @@ def split_reviews():
     df_test_reviews.drop("Like", axis=1, inplace=True)
     df_test_reviews['Rating'] = df_test_reviews['Rating'].fillna(0)
     df_test_reviews.to_csv("test_reviews.csv")
-    
+
+
 def clean_reviews():
     global df_reviews
     split_reviews()
     df_reviews.dropna(subset=["Like"], inplace=True)
     df_reviews['Rating'] = df_reviews['Rating'].fillna(0)
     df_reviews.drop("TestSetId", axis=1, inplace=True)
-    
 
-#clean diet
+
+# clean diet
 def clean_diet():
     global df_diet
     df_diet = df_diet.dropna(subset=["Diet"])
@@ -41,7 +46,7 @@ def clean_diet():
     df_diet["AuthorId"] = df_diet["AuthorId"].astype("string")
 
 
-#extract list from
+# extract list from
 def extract_list_elements(s):
     cleaned_string = s.replace('\\"', '')
     cleaned_string = cleaned_string.replace('c(', '[')
@@ -52,7 +57,7 @@ def extract_list_elements(s):
         return []
 
 
-#extract numbers from string text
+# extract numbers from string text
 def translate_to_int(s):
     if s.find("-") != -1:
         return 0
@@ -75,18 +80,18 @@ def translate_recipe_yields_to_categories(s):
         return "Undefined"
     result_list = s.split()
     for value in result_list[:1]:
-        #print(value)
+        # print(value)
         if value.find("-") != -1:
             value = s.split("-")[0]
-            #print("update")
-            #print(value)
+            # print("update")
+            # print(value)
         fraction_obj = Fraction(value)
         val_int: float = float(fraction_obj)
         if val_int == 1:
             return "Single Portion"
         elif val_int == 2:
             return "Two Portions"
-        elif val_int <=5:
+        elif val_int <= 5:
             return "Medium Portions"
         elif val_int > 5:
             return "Many Portions"
@@ -111,7 +116,7 @@ def clean_recipes():
 
     print("this step takes time please wait")
     for search_string in df_ingredients:
-        #print(search_string)
+        # print(search_string)
         xy = df_recipes['RecipeIngredientParts'].apply(lambda x: x.count(search_string))
         new_entry = {"ingredient": search_string, "count": xy.sum()}
         df_count_ingredients.loc[len(df_count_ingredients)] = new_entry
@@ -120,7 +125,7 @@ def clean_recipes():
 
     print("extracting most important ingredients")
     # safe 10 most important ingedrients in extra columns
-    for i, r in df_ingredients_sorted.head(20).iterrows():
+    for i, r in df_ingredients_sorted.head(10).iterrows():
         search_string = r['ingredient']
         df_recipes[f'Recipe_IngredientParts_{search_string}'] = 0
 
@@ -133,7 +138,7 @@ def clean_recipes():
                 except:
                     continue
 
-    #print("done with ingredients")
+    # print("done with ingredients")
     # fill na
     df_recipes["RecipeServings"] = df_recipes["RecipeServings"].fillna(0)
 
@@ -173,10 +178,9 @@ def clean_recipes():
     df_recipes = df_recipes.drop(index=max_value_index).reset_index(drop=True)
 
 
-
 def clean_requests():
     global df_requests
-    
+
     # convert the data types to category
     df_requests["HighCalories"] = df_requests["HighCalories"].astype(int)
     df_requests["HighCalories"] = df_requests["HighCalories"].astype("category")
@@ -188,13 +192,14 @@ def clean_requests():
     df_requests["LowSugar"] = df_requests["LowSugar"].astype("category")
 
     df_requests["HighFiber"] = df_requests["HighFiber"].astype("category")
-    
+
+
 def rename_columns():
     global df_diet
     global df_recipes
     global df_reviews
     global df_requests
-    
+
     # rename columns
     df_requests.rename(columns=lambda x: "requests_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
     df_reviews.rename(columns=lambda x: "reviews_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
@@ -208,7 +213,7 @@ def merge_training_df():
     global df_recipes
     global df_reviews
     global df_requests
-    
+
     # join the dataframes
     df_1 = pd.merge(df_diet, df_reviews, on="AuthorId", how="inner")
     df_2 = pd.merge(df_1, df_recipes, on="RecipeId", how="inner")
@@ -217,15 +222,16 @@ def merge_training_df():
     df_merged = df_merged.drop('AuthorId', axis=1)
     df_merged = df_merged.drop('RecipeId', axis=1)
     df_merged.dropna(inplace=True)
-    
+
     return df_merged
+
 
 def merge_test_df():
     global df_diet
     global df_recipes
     global df_requests
     global df_test_reviews
-    
+
     df_1 = pd.merge(df_diet, df_test_reviews, on="AuthorId", how="inner")
     df_2 = pd.merge(df_1, df_recipes, on="RecipeId", how="inner")
     df_merged = pd.merge(df_2, df_requests, on=["AuthorId", "RecipeId"], how="inner")
@@ -236,12 +242,11 @@ def merge_test_df():
     df_test_set_id.to_csv("test_set_id.csv")
     df_merged = df_merged.drop('reviews_TestSetId', axis=1)
     df_merged.dropna(inplace=True)
-    
-    return df_merged
-    
-    
 
-def main():
+    return df_merged
+
+
+def datacleaning():
     seed = 2024
     np.random.seed(seed)
 
@@ -250,7 +255,7 @@ def main():
     clean_diet()
     print("done cleaning diet")
 
-    #clean reviews
+    # clean reviews
     print("start cleaning reviews")
     clean_reviews()
     print("done cleaning reviews")
@@ -260,35 +265,88 @@ def main():
     clean_recipes()
     print("done cleaning recipes")
 
-    #clean request
+    # clean request
     print("start cleaning requests")
     clean_requests()
     print("done cleaning requests")
 
-    #rename columns
+    # rename columns
     print("start renaming columns")
     rename_columns()
     print("done renaming columns")
-    
-    #merge
+
+    # merge
     print("start merging")
     df_training = merge_training_df()
     df_test = merge_test_df()
     print("done merging")
-    
-    #save as pickle
+
+    # save as pickle
     df_training.to_pickle('cleaned_training_dataset.pkl')
     df_training.to_csv('cleaned_training_dataset.csv')
     df_test.to_pickle('cleaned_test_dataset.pkl')
     df_test.to_csv('cleaned_test_dataset.csv')
     print("done saving as pickle")
-    
 
     # check results
     df_training = pd.read_pickle('cleaned_training_dataset.pkl')
     print(df_training.head())
     print(df_training.info())
 
+
+def model():
+    df_train = pd.read_pickle('cleaned_training_dataset.pkl')
+    df_test = pd.read_pickle('cleaned_test_dataset.pkl')
+    df_index = pd.read_csv('test_set_id.csv')
+    df_submission = pd.read_csv('pub_YwCznU3.csv')
+
+    # Identify non-numeric columns
+    non_numeric_cols_train = df_train.select_dtypes(include=['object', 'category']).columns
+    non_numeric_cols_test = df_test.select_dtypes(include=['object', 'category']).columns
+
+    # Apply one-hot encoding to non-numeric columns
+    df_train = pd.get_dummies(df_train, columns=non_numeric_cols_train, drop_first=True)
+    df_test = pd.get_dummies(df_test, columns=non_numeric_cols_test, drop_first=True)
+
+    train_model = RandomForestClassifier(n_estimators=5, max_features=3, random_state=2023 + 2024)
+
+    # create X and y for training
+    X_train = df_train.drop(columns=['reviews_Like_True'])
+    y_train = df_train['reviews_Like_True']
+
+    # fit model
+    train_model.fit(X_train, y_train)
+    print("done fitting")
+
+    # predict on training set
+    pred = train_model.predict(X_train)
+
+    # calculate accuracy on training set
+    error_rate = np.mean(y_train != pred)
+    print("Error rate:", error_rate)
+    print("Accuracy:", accuracy_score(y_train, pred))
+
+    # predict on test set
+    test_pred = train_model.predict(df_test)
+
+    # match predictions with index
+    df_index['test_pred'] = test_pred
+    df_submission['prediction'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(
+        df_submission['id']).values
+    print(df_submission.info())
+    df_submission['prediction'] = df_submission['prediction'].fillna(False)
+
+    # save submission
+    print(df_submission.info())
+    df_submission['prediction'] = df_submission['prediction'].replace({
+        True: 1,
+        False: 0
+    })
+    df_submission.to_csv('predictions_BAML_Schlangen_1.csv', index=False)
+
+def main():
+    datacleaning()
+    model()
 
 if __name__ == "__main__":
     main()
