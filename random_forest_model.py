@@ -76,12 +76,14 @@ parameter_grid_random_forest = {
   "model" : [model_random_forest],
   "model__n_estimators" : [10, 20, 50],  # number of max trees in the forest
   "model__max_depth" : [2, 3, 10],
+  "model__max_features" : [3, 5, 10],
+  "model__random_state" : [2023+2024]
 }
 
 parameter_model_first_try_random_forest = {
   "model" : [model_first_try_random_forest],
   "model__n_estimators" : [5],  # number of max trees in the forest
-  "model__max_depth" : [3],
+  "model__max_depth" : [3]
 }
 
 meta_parameter_grid = [parameter_grid_logistic_regression,
@@ -122,7 +124,7 @@ print("Train Accuracy:", accuracy_score(y_train, pred))
 pred_val = search.best_estimator_.predict(X_test)
 error_rate = np.mean(y_test != pred_val)
 print("Validation Error rate:", error_rate)
-print("Validation Accuracy:", accuracy_score(y_test, pred_val))
+print("Validation Accuracy:", accuracy_score(y_test, pred_val)) 
 
 print("Score on validation set:", search.score(X_test, y_test.values.ravel()))
 
@@ -149,6 +151,18 @@ df_submission['prediction'] = df_submission['prediction'].replace({
 })
 df_submission.to_csv('predictions_BAML_Schlangen_1.csv', index=False)
 
+"""
 
+#predict on training set
+pred = train_model.predict(X_train)
+error_rate = np.mean(y_train != pred)
+print("Train Error rate:", error_rate)
+print("Train Accuracy:", accuracy_score(y_train, pred))
 
+#validate the model
+pred_val = train_model.predict(X_test)
+error_rate = np.mean(y_test != pred_val)
+print("Validation Error rate:", error_rate)
+print("Validation Accuracy:", accuracy_score(y_test, pred_val)) 
+"""
 
