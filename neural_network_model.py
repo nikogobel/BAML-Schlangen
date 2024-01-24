@@ -10,7 +10,7 @@ from keras.layers import BatchNormalization
 def load_datasets():
     # Load datasets
     df_train = pd.read_csv('cleaned_training_dataset.csv')
-    df_test = pd.read_pickle('cleaned_test_dataset.pkl')  # Assuming this exists
+    df_test = pd.read_pickle('cleaned_test_dataset.pkl')
     df_index = pd.read_csv('test_set_id.csv')
     df_submission = pd.read_csv('pub_YwCznU3.csv')
 
@@ -32,14 +32,14 @@ def preprocess_data(df_train, df_test):
     X = df_train.drop(columns=['reviews_Like'])
     y = df_train['reviews_Like'].astype(int)  # Ensure correct encoding
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+    X_train, y_train = train_test_split(X, y, test_size=0.2, random_state=0)
 
     # Normalizing the data
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    return X_train, X_test, y_train, y_test
+    return X_train, y_train, df_test
 
 def build_model(input_shape):
     # Neural Network Model
@@ -69,11 +69,28 @@ def evaluate_model(model, X_test, y_test):
     print(f"Test Accuracy: {accuracy*100:.2f}%")
 
 def main():
-    df_train, df_test, _, _ = load_datasets()
-    X_train, X_test, y_train, y_test = preprocess_data(df_train, df_test)
+    df_train, df_test, df_index, df_submission= load_datasets()
+    X_train, y_train, df_test = preprocess_data(df_train, df_test)
     model = build_model(input_shape=(X_train.shape[1],))
-    history = train_model(model, X_train, y_train, X_test, y_test)
-    evaluate_model(model, X_test, y_test)
+    evaluate_model(model, X_train, y_train)
+    
+    # predict on test set
+    test_pred = model.predict(df_test)
+
+    # match predictions with index
+    df_index['test_pred'] = test_pred
+    df_submission['prediction'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(
+        df_submission['id']).values
+    print(df_submission.info())
+    df_submission['prediction'] = df_submission['prediction'].fillna(False)
+
+    # save submission
+    print(df_submission.info())
+    df_submission['prediction'] = df_submission['prediction'].replace({
+        True: 1,
+        False: 0
+    })
+    df_submission.to_csv('predictions_BAML_Schlangen_1.csv', index=False)
 
 if __name__ == "__main__":
     main()
