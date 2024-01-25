@@ -2,10 +2,14 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, balanced_accuracy_score
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import Adam
 from keras.layers import BatchNormalization
+
+seed = 2024
+np.random.seed(seed)
 
 def load_datasets():
     # Load datasets
@@ -34,16 +38,15 @@ def preprocess_data(df_train, df_test):
     # Splitting the data
     X = df_train.drop(columns=['reviews_Like'])
     y = df_train['reviews_Like'].astype(int)  # Ensure correct encoding
-    
-    print(X.head())
-
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=0)
+    
 
     # Normalizing the data
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
-
+    
+    y_val.to_csv('y_val_NN.csv')
     return X_train, y_train, X_val, y_val, df_test
 
 def build_model(input_shape):
@@ -64,14 +67,24 @@ def build_model(input_shape):
 
 def train_model(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=10, batch_size=32, validation_data=(X_val, y_val))
+    history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_val, y_val))
 
     return history
 
 def evaluate_model(model, X_val, y_val):
     # Evaluating the model
     loss, accuracy = model.evaluate(X_val, y_val)
-    print(f"Test Accuracy: {accuracy*100:.2f}%")
+    print(f"Validation Accuracy: {accuracy*100:.2f}%")
+    
+    
+    pred = model.predict(X_val)
+    pred = np.round(pred)
+    y_val = y_val.to_numpy()
+    
+    # calculate accuracy on training set
+    error_rate = np.mean(y_val != pred)
+    print("Error rate:", error_rate)
+    print("Balanced Validation Accuracy:", balanced_accuracy_score(y_val, pred))
 
 def main():
     df_train, df_test, df_index, df_submission= load_datasets()
@@ -80,23 +93,20 @@ def main():
     
     # train model
     history = train_model(model, X_train, y_train, X_val, y_val)
-    
+
     evaluate_model(model, X_val, y_val)
     
     # predict on test set
     test_pred = model.predict(df_test)
     
-    print(test_pred)
     # match predictions with index
     df_index['test_pred'] = test_pred
     df_submission['prediction'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(
         df_submission['id']).values
-    print(df_submission.info())
     df_submission['prediction'] = df_submission['prediction'].fillna(0.0)
     df_submission['prediction'] = df_submission['prediction'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
     
     # save submission
-    print(df_submission.info())
     df_submission.to_csv('predictions_BAML_Schlangen_2.csv', index=False)
 
 if __name__ == "__main__":

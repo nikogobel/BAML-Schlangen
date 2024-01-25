@@ -3,6 +3,8 @@ import numpy as np
 from fractions import Fraction
 import json
 
+seed = 2024
+np.random.seed(seed)
 
 # load the data
 file_path_requests = "requests.csv"
@@ -242,8 +244,6 @@ def merge_test_df():
     
 
 def main():
-    seed = 2024
-    np.random.seed(seed)
 
     # clean diet
     print("start cleaning diet")

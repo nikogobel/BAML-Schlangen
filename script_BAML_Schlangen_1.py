@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix, balanced_accuracy_score
 import matplotlib.pyplot as plt
 from fractions import Fraction
 import json
@@ -19,7 +19,9 @@ df_recipes = pd.read_csv(file_path_recipes)
 df_diet = pd.read_csv(file_path_diet)
 df_test_reviews = None
 
-
+seed = 2024
+np.random.seed(seed)
+    
 # clean reviews
 def split_reviews():
     global df_test_reviews
@@ -247,8 +249,6 @@ def merge_test_df():
 
 
 def datacleaning():
-    seed = 2024
-    np.random.seed(seed)
 
     # clean diet
     print("start cleaning diet")
@@ -313,18 +313,22 @@ def model():
     # create X and y for training
     X_train = df_train.drop(columns=['reviews_Like_True'])
     y_train = df_train['reviews_Like_True']
+    
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=0)
+    y_val.to_csv('y_val_RF.csv')
 
     # fit model
     train_model.fit(X_train, y_train)
     print("done fitting")
 
     # predict on training set
-    pred = train_model.predict(X_train)
+    pred = train_model.predict(X_val)
 
     # calculate accuracy on training set
-    error_rate = np.mean(y_train != pred)
+    error_rate = np.mean(y_val != pred)
     print("Error rate:", error_rate)
-    print("Accuracy:", accuracy_score(y_train, pred))
+    print("Accuracy:", accuracy_score(y_val, pred))
+    print("Balanced Accuracy:", balanced_accuracy_score(y_val, pred))
 
     # predict on test set
     test_pred = train_model.predict(df_test)
