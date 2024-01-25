@@ -2,10 +2,11 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix, balanced_accuracy_score
 import matplotlib.pyplot as plt
 from fractions import Fraction
 import json
+from imblearn.over_sampling import SMOTE
 
 from sklearn.preprocessing import StandardScaler
 from keras.models import Sequential
@@ -40,7 +41,7 @@ def clean_reviews():
     global df_reviews
     split_reviews()
     df_reviews.dropna(subset=["Like"], inplace=True)
-    df_reviews['Rating'] = df_reviews['Rating'].fillna(0)
+    df_reviews = df_reviews.drop('Rating', axis=1)
     df_reviews.drop("TestSetId", axis=1, inplace=True)
 
 
@@ -50,37 +51,7 @@ def clean_diet():
     df_diet = df_diet.dropna(subset=["Diet"])
     df_diet["Diet"] = df_diet["Diet"].astype("category")
     df_diet["AuthorId"] = df_diet["AuthorId"].astype("string")
-
-
-# extract list from
-def extract_list_elements(s):
-    cleaned_string = s.replace('\\"', '')
-    cleaned_string = cleaned_string.replace('c(', '[')
-    cleaned_string = cleaned_string.replace(')', ']')
-    if s.find("c(") != -1:
-        return json.loads(cleaned_string)
-    else:
-        return []
-
-
-# extract numbers from string text
-def translate_to_int(s):
-    if s.find("-") != -1:
-        return 0
-    result_list = s.split()
-    total: float = 0
-    for value in result_list:
-        fraction_obj = Fraction(value)
-        val_int: float = float(fraction_obj)
-        if val_int > 0:
-            total = total + val_int
-    return total
-
-
-def translate_to_int_loop(s):
-    return [float(translate_to_int(element)) for element in s]
-
-
+    
 def translate_recipe_yields_to_categories(s):
     if s == "Undefined":
         return "Undefined"
@@ -107,44 +78,7 @@ def translate_recipe_yields_to_categories(s):
 
 def clean_recipes():
     global df_recipes
-
-    # extract lists
-    df_recipes['RecipeIngredientParts'] = df_recipes['RecipeIngredientParts'].apply(extract_list_elements)
-    df_recipes['RecipeIngredientQuantities'] = df_recipes['RecipeIngredientQuantities'].apply(extract_list_elements)
-    df_recipes['RecipeIngredientQuantities'] = df_recipes['RecipeIngredientQuantities'].apply(translate_to_int_loop)
-
-    # get ingredients and how often they are used
-    df_ingredients = df_recipes['RecipeIngredientParts']
-    df_ingredients = df_ingredients.explode()
-    df_ingredients = df_ingredients.drop_duplicates()
-
-    df_count_ingredients = pd.DataFrame(columns=["ingredient", "count"])
-
-    print("this step takes time please wait")
-    for search_string in df_ingredients:
-        # print(search_string)
-        xy = df_recipes['RecipeIngredientParts'].apply(lambda x: x.count(search_string))
-        new_entry = {"ingredient": search_string, "count": xy.sum()}
-        df_count_ingredients.loc[len(df_count_ingredients)] = new_entry
-
-    df_ingredients_sorted = df_count_ingredients.sort_values(by='count', ascending=False)
-
-    print("extracting most important ingredients")
-    # safe 10 most important ingedrients in extra columns
-    for i, r in df_ingredients_sorted.head(10).iterrows():
-        search_string = r['ingredient']
-        df_recipes[f'Recipe_IngredientParts_{search_string}'] = 0
-
-        for index, row in df_recipes.iterrows():
-            if search_string in row['RecipeIngredientParts']:
-                search_index = row['RecipeIngredientParts'].index(search_string)
-                try:
-                    new_value = row['RecipeIngredientQuantities'][search_index]
-                    df_recipes.at[index, f'Recipe_IngredientParts_{search_string}'] = new_value
-                except:
-                    continue
-
-    # print("done with ingredients")
+    
     # fill na
     df_recipes["RecipeServings"] = df_recipes["RecipeServings"].fillna(0)
 
@@ -283,23 +217,23 @@ def datacleaning():
 
     # merge
     print("start merging")
-    df_training = merge_training_df()
+    df_train = merge_training_df()
     df_test = merge_test_df()
+    
+    non_numeric_cols_train = df_train.select_dtypes(include=['object', 'category']).columns
+    non_numeric_cols_test = df_test.select_dtypes(include=['object', 'category']).columns
+    
+    df_train = pd.get_dummies(df_train, columns=non_numeric_cols_train, drop_first=True)
+    df_test = pd.get_dummies(df_test, columns=non_numeric_cols_test, drop_first=True)
+    
     print("done merging")
 
     # save as pickle
-    df_training.to_pickle('cleaned_training_dataset.pkl')
-    df_training.to_csv('cleaned_training_dataset.csv')
+    df_train.to_pickle('cleaned_training_dataset.pkl')
+    df_train.to_csv('cleaned_training_dataset.csv')
     df_test.to_pickle('cleaned_test_dataset.pkl')
     df_test.to_csv('cleaned_test_dataset.csv')
     print("done saving as pickle")
-
-    # check results
-    df_training = pd.read_pickle('cleaned_training_dataset.pkl')
-    print(df_training.head())
-    print(df_training.info())
-
-
 
 def load_datasets():
     # Load datasets
@@ -308,28 +242,17 @@ def load_datasets():
     df_index = pd.read_csv('test_set_id.csv')
     df_submission = pd.read_csv('pub_YwCznU3.csv')
 
-    # Drop the 'Unnamed: 0' column
-    df_train.drop(columns=['Unnamed: 0'], inplace=True)
-
     return df_train, df_test, df_index, df_submission
 
 def preprocess_data(df_train, df_test):
-    # Identify non-numeric columns
-    non_numeric_cols_train = df_train.select_dtypes(include=['object', 'category']).columns
-    non_numeric_cols_test = df_test.select_dtypes(include=['object', 'category']).columns
-
-    # Apply one-hot encoding to non-numeric columns
-    df_train = pd.get_dummies(df_train, columns=non_numeric_cols_train, drop_first=True)
-    df_test = pd.get_dummies(df_test, columns=non_numeric_cols_test, drop_first=True)
     
     df_train = df_train.astype('float32')
     df_test = df_test.astype('float32')
     
     # Splitting the data
-    X = df_train.drop(columns=['reviews_Like'])
-    y = df_train['reviews_Like'].astype(int)  # Ensure correct encoding
     
-    print(X.head())
+    X = df_train.drop(columns=['reviews_Like_True'])
+    y = df_train['reviews_Like_True'].astype(int)  # Ensure correct encoding
 
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=0)
 
@@ -337,6 +260,9 @@ def preprocess_data(df_train, df_test):
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
+    
+    smote = SMOTE()
+    X_train, y_train = smote.fit_resample(X_train, y_train)
 
     return X_train, y_train, X_val, y_val, df_test
 
@@ -358,14 +284,24 @@ def build_model(input_shape):
 
 def train_model(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=10, batch_size=32, validation_data=(X_val, y_val))
+    history = model.fit(X_train, y_train, epochs=20, batch_size=64, validation_data=(X_val, y_val))
 
     return history
 
-def evaluate_model(model, X_val, y_test):
+def evaluate_model(model, X_val, y_val):
     # Evaluating the model
-    loss, accuracy = model.evaluate(X_val, y_test)
-    print(f"Test Accuracy: {accuracy*100:.2f}%")
+    loss, accuracy = model.evaluate(X_val, y_val)
+    print(f"Validation Accuracy: {accuracy*100:.2f}%")
+    
+    
+    pred = model.predict(X_val)
+    pred = np.round(pred)
+    y_val = y_val.to_numpy()
+    
+    # calculate accuracy on training set
+    error_rate = np.mean(y_val != pred)
+    print("Error rate:", error_rate)
+    print("Balanced Validation Accuracy:", balanced_accuracy_score(y_val, pred))
     
 def compute_prediction():
     df_train, df_test, df_index, df_submission= load_datasets()
@@ -374,23 +310,20 @@ def compute_prediction():
     
     # train model
     history = train_model(model, X_train, y_train, X_val, y_val)
-    
-    evaluate_model(model, X_train, y_train)
+
+    evaluate_model(model, X_val, y_val)
     
     # predict on test set
     test_pred = model.predict(df_test)
     
-    print(test_pred)
     # match predictions with index
     df_index['test_pred'] = test_pred
     df_submission['prediction'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(
         df_submission['id']).values
-    print(df_submission.info())
     df_submission['prediction'] = df_submission['prediction'].fillna(0.0)
     df_submission['prediction'] = df_submission['prediction'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
     
     # save submission
-    print(df_submission.info())
     df_submission.to_csv('predictions_BAML_Schlangen_2.csv', index=False)
 
 def main():
