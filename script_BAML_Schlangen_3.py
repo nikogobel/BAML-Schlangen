@@ -13,6 +13,7 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import Adam
 from keras.layers import BatchNormalization
+from keras.regularizers import l1, l2, l1_l2
 
 # load the data
 file_path_requests = "requests.csv"
@@ -278,13 +279,13 @@ def build_model(input_shape):
     model.add(Dense(32, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
 
-    model.compile(optimizer=Adam(learning_rate=0.0005), loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
 
     return model
 
 def train_model(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=20, batch_size=64, validation_data=(X_val, y_val))
+    history = model.fit(X_train, y_train, epochs=40, batch_size=64, validation_data=(X_val, y_val))
 
     return history
 
