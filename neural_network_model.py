@@ -27,19 +27,24 @@ def preprocess_data(df_train, df_test):
     # Apply one-hot encoding to non-numeric columns
     df_train = pd.get_dummies(df_train, columns=non_numeric_cols_train, drop_first=True)
     df_test = pd.get_dummies(df_test, columns=non_numeric_cols_test, drop_first=True)
-
+    
+    df_train = df_train.astype('float32')
+    df_test = df_test.astype('float32')
+    
     # Splitting the data
     X = df_train.drop(columns=['reviews_Like'])
     y = df_train['reviews_Like'].astype(int)  # Ensure correct encoding
+    
+    print(X.head())
 
-    X_train, y_train = train_test_split(X, y, test_size=0.2, random_state=0)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=0)
 
     # Normalizing the data
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
+    X_val = scaler.transform(X_val)
 
-    return X_train, y_train, df_test
+    return X_train, y_train, X_val, y_val, df_test
 
 def build_model(input_shape):
     # Neural Network Model
@@ -57,40 +62,42 @@ def build_model(input_shape):
 
     return model
 
-def train_model(model, X_train, y_train, X_test, y_test):
+def train_model(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test))
+    history = model.fit(X_train, y_train, epochs=10, batch_size=32, validation_data=(X_val, y_val))
 
     return history
 
-def evaluate_model(model, X_test, y_test):
+def evaluate_model(model, X_val, y_val):
     # Evaluating the model
-    loss, accuracy = model.evaluate(X_test, y_test)
+    loss, accuracy = model.evaluate(X_val, y_val)
     print(f"Test Accuracy: {accuracy*100:.2f}%")
 
 def main():
     df_train, df_test, df_index, df_submission= load_datasets()
-    X_train, y_train, df_test = preprocess_data(df_train, df_test)
+    X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
     model = build_model(input_shape=(X_train.shape[1],))
-    evaluate_model(model, X_train, y_train)
+    
+    # train model
+    history = train_model(model, X_train, y_train, X_val, y_val)
+    
+    evaluate_model(model, X_val, y_val)
     
     # predict on test set
     test_pred = model.predict(df_test)
-
+    
+    print(test_pred)
     # match predictions with index
     df_index['test_pred'] = test_pred
     df_submission['prediction'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(
         df_submission['id']).values
     print(df_submission.info())
-    df_submission['prediction'] = df_submission['prediction'].fillna(False)
-
+    df_submission['prediction'] = df_submission['prediction'].fillna(0.0)
+    df_submission['prediction'] = df_submission['prediction'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
+    
     # save submission
     print(df_submission.info())
-    df_submission['prediction'] = df_submission['prediction'].replace({
-        True: 1,
-        False: 0
-    })
-    df_submission.to_csv('predictions_BAML_Schlangen_1.csv', index=False)
+    df_submission.to_csv('predictions_BAML_Schlangen_2.csv', index=False)
 
 if __name__ == "__main__":
     main()
