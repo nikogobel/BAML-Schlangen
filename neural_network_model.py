@@ -7,6 +7,7 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import Adam
 from keras.layers import BatchNormalization
+from imblearn.over_sampling import SMOTE
 
 seed = 2024
 np.random.seed(seed)
@@ -46,7 +47,8 @@ def preprocess_data(df_train, df_test):
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
     
-    y_val.to_csv('y_val_NN.csv')
+    smote = SMOTE()
+    X_train, y_train = smote.fit_resample(X_train, y_train)
     return X_train, y_train, X_val, y_val, df_test
 
 def build_model(input_shape):
@@ -67,7 +69,7 @@ def build_model(input_shape):
 
 def train_model(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_val, y_val))
+    history = model.fit(X_train, y_train, epochs=20, batch_size=64, validation_data=(X_val, y_val))
 
     return history
 

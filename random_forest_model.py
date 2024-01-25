@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix, balanced_accuracy_score
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
@@ -11,6 +11,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from imblearn.ensemble import BalancedRandomForestClassifier
 
 #prepare data
 df_train = pd.read_pickle('cleaned_training_dataset.pkl')
@@ -52,6 +53,7 @@ model_logistic_regression = LogisticRegression(max_iter=30)
 model_random_forest = RandomForestClassifier()
 model_gradient_boosting = GradientBoostingClassifier()
 model_first_try_random_forest = RandomForestClassifier()
+model_balanced_random_forest = BalancedRandomForestClassifier()
 
 # train the models
 pipeline = Pipeline(steps=[("scaler", transform_scaler),
@@ -86,10 +88,17 @@ parameter_model_first_try_random_forest = {
   "model__max_depth" : [3]
 }
 
+paramezer_model_balanced_random_forest = {
+  "model" : [model_balanced_random_forest],
+  "model__n_estimators" : [5],  # number of max trees in the forest
+  "model__max_depth" : [3]
+}
+
 meta_parameter_grid = [parameter_grid_logistic_regression,
                        parameter_grid_random_forest,
                        parameter_grid_gradient_boosting,
-                       parameter_model_first_try_random_forest]
+                       parameter_model_first_try_random_forest,
+                       paramezer_model_balanced_random_forest]
 
 meta_parameter_grid = [{**parameter_grid_preprocessing, **model_grid}
                        for model_grid in meta_parameter_grid]
@@ -125,7 +134,7 @@ pred_val = search.best_estimator_.predict(X_test)
 error_rate = np.mean(y_test != pred_val)
 print("Validation Error rate:", error_rate)
 print("Validation Accuracy:", accuracy_score(y_test, pred_val)) 
-
+print("Balanced Validation Accuracy:", balanced_accuracy_score(y_test, pred_val))
 print("Score on validation set:", search.score(X_test, y_test.values.ravel()))
 
 # contingency table
