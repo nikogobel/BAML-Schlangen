@@ -285,7 +285,7 @@ def build_model(input_shape):
 
 def train_model(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=40, batch_size=64, validation_data=(X_val, y_val))
+    history = model.fit(X_train, y_train, epochs=60, batch_size=64, validation_data=(X_val, y_val))
 
     return history
 
