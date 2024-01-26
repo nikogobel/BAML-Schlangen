@@ -11,9 +11,11 @@ from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import StandardScaler
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
+from keras.layers import LeakyReLU
 from keras.optimizers import Adam
 from keras.layers import BatchNormalization
-from keras.regularizers import l1, l2, l1_l2
+from keras.regularizers import l1, l2
+import tensorflow as tf
 
 # load the data
 file_path_requests = "requests.csv"
@@ -34,7 +36,7 @@ def split_reviews():
     df_test_reviews = df_reviews[df_reviews["Like"].isna()]
     df_test_reviews.dropna(subset=["TestSetId"], inplace=True)
     df_test_reviews.drop("Like", axis=1, inplace=True)
-    df_test_reviews['Rating'] = df_test_reviews['Rating'].fillna(0)
+    df_test_reviews.drop("Rating", axis=1, inplace=True)
     df_test_reviews.to_csv("test_reviews.csv")
 
 
@@ -267,25 +269,48 @@ def preprocess_data(df_train, df_test):
 
     return X_train, y_train, X_val, y_val, df_test
 
+def balanced_accuracy(y_true, y_pred):
+    # Cast y_pred to binary (0 or 1)
+    y_pred = tf.round(y_pred)
+    
+    # True Positives, False Positives, True Negatives, False Negatives
+    tp = tf.reduce_sum(tf.cast(y_true * y_pred, tf.float32))
+    fp = tf.reduce_sum(tf.cast((1 - y_true) * y_pred, tf.float32))
+    tn = tf.reduce_sum(tf.cast((1 - y_true) * (1 - y_pred), tf.float32))
+    fn = tf.reduce_sum(tf.cast(y_true * (1 - y_pred), tf.float32))
+
+    # True Positive Rate (TPR) or Sensitivity = TP / (TP + FN)
+    tpr = tp / (tp + fn + tf.keras.backend.epsilon())
+
+    # True Negative Rate (TNR) or Specificity = TN / (TN + FP)
+    tnr = tn / (tn + fp + tf.keras.backend.epsilon())
+
+    # Balanced Accuracy = (TPR + TNR) / 2
+    balanced_acc = (tpr + tnr) / 2
+
+    return balanced_acc
+
+
 def build_model(input_shape):
     # Neural Network Model
     model = Sequential()
-    model.add(Dense(128, activation='relu', input_shape=input_shape))
+    model.add(Dense(128, input_shape=input_shape, kernel_regularizer=l2(0.01)))
     model.add(BatchNormalization())
-    model.add(Dropout(0.3))
-    model.add(Dense(64, activation='relu'))
+    model.add(LeakyReLU(alpha=0.05))
+    model.add(Dense(64, kernel_regularizer=l2(0.01)))
     model.add(BatchNormalization())
-    model.add(Dropout(0.3))
-    model.add(Dense(32, activation='relu'))
+    model.add(LeakyReLU(alpha=0.05))
+    model.add(Dense(32, kernel_regularizer=l2(0.01)))
+    model.add(LeakyReLU(alpha=0.05))
     model.add(Dense(1, activation='sigmoid'))
 
-    model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=[balanced_accuracy])
 
     return model
 
 def train_model(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=60, batch_size=64, validation_data=(X_val, y_val))
+    history = model.fit(X_train, y_train, epochs=60, batch_size=128, validation_data=(X_val, y_val))
 
     return history
 
