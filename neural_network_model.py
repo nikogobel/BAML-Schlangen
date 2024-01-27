@@ -37,8 +37,8 @@ def preprocess_data(df_train, df_test):
     df_test = df_test.astype('float32')
     
     # Splitting the data
-    X = df_train.drop(columns=['reviews_Like'])
-    y = df_train['reviews_Like'].astype(int)  # Ensure correct encoding
+    X = df_train.drop(columns=['reviews_Like_True'])
+    y = df_train['reviews_Like_True'].astype(int)  # Ensure correct encoding
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=0)
     
 
