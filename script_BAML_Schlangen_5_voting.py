@@ -295,14 +295,13 @@ def balanced_accuracy_NN(y_true, y_pred):
 def build_model_NN(input_shape):
     # Neural Network Model
     model = Sequential()
-    model.add(Dense(128, input_shape=input_shape, kernel_regularizer=l2(0.01)))
+    model.add(Dense(128, activation='relu', input_shape=input_shape))
     model.add(BatchNormalization())
-    model.add(LeakyReLU(alpha=0.05))
-    model.add(Dense(64, kernel_regularizer=l2(0.01)))
+    model.add(Dropout(0.3))
+    model.add(Dense(64, activation='relu'))
     model.add(BatchNormalization())
-    model.add(LeakyReLU(alpha=0.05))
-    model.add(Dense(32, kernel_regularizer=l2(0.01)))
-    model.add(LeakyReLU(alpha=0.05))
+    model.add(Dropout(0.3))
+    model.add(Dense(32, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
 
     model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=[balanced_accuracy_NN])
@@ -311,7 +310,7 @@ def build_model_NN(input_shape):
 
 def train_model_NN(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=10, batch_size=128, validation_data=(X_val, y_val))
+    history = model.fit(X_train, y_train, epochs=20, batch_size=64, validation_data=(X_val, y_val))
 
     return history
 
@@ -328,7 +327,7 @@ def evaluate_model_NN(model, X_val, y_val):
     # calculate accuracy on training set
     error_rate = np.mean(y_val != pred)
     print("Error rate:", error_rate)
-    print("Balanced Validation Accuracy:", balanced_accuracy_score(y_val, pred))
+    print("Balanced Validation Accuracy NN:", balanced_accuracy_score(y_val, pred))
     
 def compute_prediction_NN():
     df_train, df_test, df_index, df_submission= load_datasets()
@@ -395,7 +394,7 @@ def train_model_RF(grid_search, X_train, y_train):
     
     return best_model
 
-def evaluate_model_NN(best_model, grid_search, X_train, y_train, X_val, y_val):
+def evaluate_model_RF(best_model, grid_search, X_train, y_train, X_val, y_val):
     
     pred = best_model.predict(X_train)
     error_rate = np.mean(y_train != pred)
@@ -540,8 +539,8 @@ def build_model_SC():
     
     # Define parameter grid
     param_grid = {
-        'rf__n_estimators': [10],
-        'gb__n_estimators': [10]
+        'rf__n_estimators': [10, 20],
+        'gb__n_estimators': [5, 10]
     }
 
     model = StackingClassifier(estimators=base_estimators, final_estimator=LogisticRegression())
@@ -597,7 +596,7 @@ def compute_prediction_SC():
 
 def main():
     datacleaning()
-    #compute_prediction_NN()
+    compute_prediction_NN()
     #compute_prediction_RF()
     #compute_prediction_GDC()
     compute_prediction_SC()
