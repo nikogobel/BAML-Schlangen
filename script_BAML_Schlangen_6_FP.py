@@ -17,9 +17,12 @@ from keras.layers import BatchNormalization
 from keras.regularizers import l1, l2
 import tensorflow as tf
 from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import StackingClassifier
+from sklearn.ensemble import BaggingClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.decomposition import PCA
 from joblib import parallel_backend
@@ -286,7 +289,7 @@ def preprocess_data(df_train, df_test):
     # Concatenate scaled columns back with unscaled columns
     X_val = pd.concat([X_val_scaled, X_val.drop(columns=columns_to_scale)], axis=1)
 
-    pca = PCA()
+
 
     smote = SMOTE()
     X_train, y_train = smote.fit_resample(X_train, y_train)
@@ -338,24 +341,48 @@ def train_model_NN(model, X_train, y_train, X_val, y_val):
 
     return model, history
 
-def evaluate_model_NN(model, X_val, y_val):
+def evaluate_model_NN(model, X_train, y_train, X_val, y_val):
     # Evaluating the model
     loss, accuracy = model.evaluate(X_val, y_val)
-    print(f"Validation Accuracy: {accuracy*100:.2f}%")
+    print(f"Validation Accuracy NN: {accuracy*100:.2f}%")
     
-    
-    pred = model.predict(X_val)
+    pred = model.predict(X_train)
     pred = np.round(pred)
+    y_train = y_train.to_numpy()
+    
+    error_rate = np.mean(y_train != pred)
+    print("Train Error rate NN:", error_rate)
+    print("Train Accuracy NN:", accuracy_score(y_train, pred)) 
+
+    pred_val = model.predict(X_val)
+    pred_val = np.round(pred_val)
     y_val = y_val.to_numpy()
     
-    # calculate accuracy on training set
-    error_rate = np.mean(y_val != pred)
-    print("Error rate:", error_rate)
-    balanced_accuracy = balanced_accuracy_score(y_val, pred)
-    print("Balanced Validation Accuracy NN:", balanced_accuracy)
+    false_negative_rate = np.mean((y_val == 1) & (pred_val == 0))
+    true_positive_rate = np.mean((y_val == 1) & (pred_val == 1))
+    false_positive_rate = np.mean((y_val == 0) & (pred_val == 1))
+    true_negative_rate = np.mean((y_val == 0) & (pred_val == 0))
+    
+    
+    print("False Negative Rate in Validation Data:", false_negative_rate)
+    print("True Positive Rate in Validation Data:", true_positive_rate)
+    print("False Positive Rate in Validation Data:", false_positive_rate)
+    print("True Negative Rate in Validation Data:", true_negative_rate) 
+    
+    sensitivity = true_positive_rate / (true_positive_rate + false_negative_rate)
+    specificity = true_negative_rate / (true_negative_rate + false_positive_rate)
+    print("Sensitivity in Validation Data:", sensitivity)
+    print("Specificity in Validation Data:", specificity)
+    
+    balanced_accuracy_manual = (sensitivity + specificity) / 2
+    print("Balanced Validation Accuracy Manual", balanced_accuracy_manual)
+    
+    print("Validation Accuracy NN:", accuracy_score(y_val, pred_val))
+    balanced_accuracy = balanced_accuracy_score(y_val, pred_val)
+    print("Balanced Validation NN:", balanced_accuracy)
     
     return balanced_accuracy
-    
+
 def compute_prediction_NN():
     df_train, df_test, df_index, df_submission= load_datasets()
     X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
@@ -365,7 +392,7 @@ def compute_prediction_NN():
     # train model
     model, history = train_model_NN(model, X_train, y_train, X_val, y_val)
     
-    balanced_accuracy = evaluate_model_NN(model, X_val, y_val)
+    balanced_accuracy = evaluate_model_NN(model, X_train, y_train, X_val, y_val)
     
     # predict on test set
     test_pred = model.predict(df_test)
@@ -590,11 +617,33 @@ def evaluate_model_final_RF(model, X_train, y_train, X_val, y_val):
     
     pred_val = model.predict(X_val)
     error_rate = np.mean(y_val != pred_val)
+    
+    
+    
+    false_negative_rate = np.mean((y_val == 1) & (pred_val == 0))
+    true_positive_rate = np.mean((y_val == 1) & (pred_val == 1))
+    false_positive_rate = np.mean((y_val == 0) & (pred_val == 1))
+    true_negative_rate = np.mean((y_val == 0) & (pred_val == 0))
+    
+    
+    print("False Negative Rate in Validation Data:", false_negative_rate)
+    print("True Positive Rate in Validation Data:", true_positive_rate)
+    print("False Positive Rate in Validation Data:", false_positive_rate)
+    print("True Negative Rate in Validation Data:", true_negative_rate) 
+    
+    sensitivity = true_positive_rate / (true_positive_rate + false_negative_rate)
+    specificity = true_negative_rate / (true_negative_rate + false_positive_rate)
+    print("Sensitivity in Validation Data:", sensitivity)
+    print("Specificity in Validation Data:", specificity)
+    
+    balanced_accuracy_manual = (sensitivity + specificity) / 2
+    print("Balanced Validation Accuracy Manual", balanced_accuracy_manual)
+    
     print("Validation Error rate final RF:", error_rate)
     print("Validation Accuracy final RF:", accuracy_score(y_val, pred_val))
     balanced_accuracy = balanced_accuracy_score(y_val, pred_val)
     print("Balanced Validation Accuracy final RF:", balanced_accuracy)
-    
+
     return balanced_accuracy
 
 def compute_prediction_final_RF():
@@ -619,7 +668,7 @@ def compute_prediction_final_RF():
 def build_model_final_GDC(X_train, y_train):
     # Gradient Boosting model with default parameters
     with parallel_backend('threading', n_jobs=16): 
-        model = GradientBoostingClassifier(learning_rate=0.1, max_depth=10, min_samples_leaf=2, min_samples_split=2, n_estimators=100)
+        model = GradientBoostingClassifier(learning_rate=0.3, max_depth=4, max_features=5, min_samples_leaf=2, min_samples_split=2, n_estimators=200)
         model.fit(X_train, y_train)
     
     return model
@@ -664,11 +713,14 @@ def build_model_final_SC(X_train, y_train):
     with parallel_backend('threading', n_jobs=16):
         # Define base estimators
         base_estimators = [
-            ('rf', RandomForestClassifier(max_depth=10, min_samples_leaf=1, min_samples_split=10, n_estimators=30)),
-            ('gb', GradientBoostingClassifier(learning_rate=0.1, max_depth=10, min_samples_leaf=2, min_samples_split=2, n_estimators=100))
+            ('rf', RandomForestClassifier(max_depth=9, max_features=10, min_samples_leaf=3, min_samples_split=2, n_estimators=50)),
+            ('gb', GradientBoostingClassifier(learning_rate=0.3, max_depth=4, max_features=5, min_samples_leaf=2, min_samples_split=2, n_estimators=200)),
+            ('lr', LogisticRegression(penalty='l1', C=1, max_iter=100, solver='saga')),
+            ('nb', GaussianNB()),
+            ('bg', BaggingClassifier(base_estimator=DecisionTreeClassifier()))
         ]
     
-        model = StackingClassifier(estimators=base_estimators, final_estimator=LogisticRegression())
+        model = StackingClassifier(estimators=base_estimators, final_estimator=LogisticRegression(penalty='l1', C=1, max_iter=100, solver='saga'))
     
         model.fit(X_train, y_train)
         
@@ -719,12 +771,14 @@ def main():
     #compute_prediction_RF()
     #compute_prediction_GDC()
     #compute_prediction_SC()
-    df_submission_RF, balaced_accuracy_RF = compute_prediction_final_RF()
+    #df_submission_RF, balaced_accuracy_RF = compute_prediction_final_RF()
     #df_submission_RF.to_csv("predictions_BAML_Schlangen_04.csv", index=False)
-    print("Balanced Validation Accuracy RF:", balaced_accuracy_RF)
-    #df_submission_GDC, balaced_accuracy_GDC = compute_prediction_final_GDC()
-    #print("Balanced Validation Accuracy GDC:", balaced_accuracy_GDC)
+    #print("Balanced Validation Accuracy RF:", balaced_accuracy_RF)
+    df_submission_GDC, balaced_accuracy_GDC = compute_prediction_final_GDC()
+    print("Balanced Validation Accuracy GDC:", balaced_accuracy_GDC)
     #df_submission_SC, balaced_accuracy_SC = compute_prediction_final_SC()
+    #print("Balanced Validation Accuracy SC:", balaced_accuracy_SC)
+    #df_submission_SC.to_csv("predictions_BAML_Schlangen_05.csv", index=False)
 
 if __name__ == "__main__":
     main()
