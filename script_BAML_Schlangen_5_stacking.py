@@ -21,6 +21,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import StackingClassifier
 from sklearn.model_selection import GridSearchCV
+from sklearn.decomposition import PCA
 
 # load the data
 file_path_requests = "requests.csv"
@@ -33,6 +34,9 @@ df_reviews = pd.read_csv(file_path_reviews)
 df_recipes = pd.read_csv(file_path_recipes)
 df_diet = pd.read_csv(file_path_diet)
 df_test_reviews = None
+
+seed = 2024
+np.random.seed(seed)
 
 
 def split_reviews():
@@ -81,7 +85,6 @@ def translate_recipe_yields_to_categories(s):
 
 def clean_recipes():
     global df_recipes
-    
     # fill na
     df_recipes["RecipeServings"] = df_recipes["RecipeServings"].fillna(0)
 
@@ -140,6 +143,7 @@ def rename_columns():
     global df_recipes
     global df_reviews
     global df_requests
+    global df_test_reviews
 
     # rename columns
     df_requests.rename(columns=lambda x: "requests_" + x if x not in ["AuthorId", "RecipeId"] else x, inplace=True)
@@ -185,8 +189,6 @@ def merge_test_df():
     return df_merged
 
 def datacleaning():
-    seed = 2024
-    np.random.seed(seed)
 
     # clean diet
     print("start cleaning diet")
@@ -217,14 +219,14 @@ def datacleaning():
     print("start merging")
     df_train = merge_training_df()
     df_test = merge_test_df()
+    print("done merging")
     
+    # one hot encoding
     non_numeric_cols_train = df_train.select_dtypes(include=['object', 'category']).columns
     non_numeric_cols_test = df_test.select_dtypes(include=['object', 'category']).columns
     
     df_train = pd.get_dummies(df_train, columns=non_numeric_cols_train, drop_first=True)
     df_test = pd.get_dummies(df_test, columns=non_numeric_cols_test, drop_first=True)
-    
-    print("done merging")
 
     # save as pickle
     df_train.to_pickle('cleaned_training_dataset.pkl')
@@ -235,17 +237,17 @@ def datacleaning():
 
 def load_datasets():
     # Load datasets
-    df_train = pd.read_csv('cleaned_training_dataset.csv')
+    df_train = pd.read_pickle('cleaned_training_dataset.pkl')
     df_test = pd.read_pickle('cleaned_test_dataset.pkl')
     df_index = pd.read_csv('test_set_id.csv')
     df_submission = pd.read_csv('pub_YwCznU3.csv')
     
-    # Drop the 'Unnamed: 0' column
-    df_train.drop(columns=['Unnamed: 0'], inplace=True)
-
+    print(df_index.info())
+    print(df_submission.info())
+    
     return df_train, df_test, df_index, df_submission
 
-def preprocess_data_NN(df_train, df_test):
+def preprocess_data(df_train, df_test):
     
     df_train = df_train.astype('float32')
     df_test = df_test.astype('float32')
@@ -258,11 +260,31 @@ def preprocess_data_NN(df_train, df_test):
 
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=0)
     
- 
-    # Normalizing the data
+    # Columns to scale
+    columns_to_scale = ['diet_Age', 'recipes_CookTime', 'recipes_PrepTime', 'recipes_Calories', 
+                        'recipes_FatContent', 'recipes_SaturatedFatContent', 'recipes_CholesterolContent',
+                        'recipes_SodiumContent', 'recipes_CarbohydrateContent', 'recipes_FiberContent', 
+                        'recipes_SugarContent', 'recipes_ProteinContent', 'recipes_RecipeServings', 
+                        'requests_Time']
+
+    # Initialize the StandardScaler
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_val = scaler.transform(X_val)
+
+    # Scale the specified columns for the training data
+    X_train_scaled = scaler.fit_transform(X_train[columns_to_scale])
+    X_train_scaled = pd.DataFrame(X_train_scaled, columns=columns_to_scale, index=X_train.index)
+
+    # Concatenate scaled columns back with unscaled columns
+    X_train = pd.concat([X_train_scaled, X_train.drop(columns=columns_to_scale)], axis=1)
+
+    # Scale the specified columns for the validation data
+    X_val_scaled = scaler.transform(X_val[columns_to_scale])
+    X_val_scaled = pd.DataFrame(X_val_scaled, columns=columns_to_scale, index=X_val.index)
+
+    # Concatenate scaled columns back with unscaled columns
+    X_val = pd.concat([X_val_scaled, X_val.drop(columns=columns_to_scale)], axis=1)
+    
+    pca = PCA()
 
     smote = SMOTE()
     X_train, y_train = smote.fit_resample(X_train, y_train)
@@ -327,18 +349,21 @@ def evaluate_model_NN(model, X_val, y_val):
     # calculate accuracy on training set
     error_rate = np.mean(y_val != pred)
     print("Error rate:", error_rate)
-    print("Balanced Validation Accuracy NN:", balanced_accuracy_score(y_val, pred))
+    balanced_accuracy = balanced_accuracy_score(y_val, pred)
+    print("Balanced Validation Accuracy NN:", balanced_accuracy)
+    
+    return balanced_accuracy
     
 def compute_prediction_NN():
     df_train, df_test, df_index, df_submission= load_datasets()
-    X_train, y_train, X_val, y_val, df_test = preprocess_data_NN(df_train, df_test)
+    X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
     
     model = build_model_NN(input_shape=(X_train.shape[1],))
     
     # train model
     history = train_model_NN(model, X_train, y_train, X_val, y_val)
 
-    evaluate_model_NN(model, X_val, y_val)
+    balanced_accuracy = evaluate_model_NN(model, X_val, y_val)
     
     # predict on test set
     test_pred = model.predict(df_test)
@@ -350,7 +375,7 @@ def compute_prediction_NN():
     df_submission['prediction_NN'] = df_submission['prediction_NN'].fillna(0.0)
     df_submission['prediction_NN'] = df_submission['prediction_NN'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
     
-    return df_submission
+    return df_submission, balanced_accuracy
 
 def preprocess_data_RF(df_train, df_test):
     df_train = df_train.astype('float32')
@@ -390,6 +415,7 @@ def build_model_RF():
 def train_model_RF(grid_search, X_train, y_train):
     
     grid_search.fit(X_train, y_train)
+    print("Best Prrameters:", grid_search.best_params_ ,"(CV score=%0.3f)" % grid_search.best_score_)
     best_model = grid_search.best_estimator_
     
     return best_model
@@ -410,13 +436,13 @@ def evaluate_model_RF(best_model, grid_search, X_train, y_train, X_val, y_val):
 
 def compute_prediction_RF():
     df_train, df_test, df_index, df_submission= load_datasets()
-    X_train, y_train, X_val, y_val, df_test = preprocess_data_RF(df_train, df_test)
+    X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
     grid_search = build_model_RF()
     
     # train model
     best_model = train_model_RF(grid_search, X_train, y_train)
 
-    evaluate_model_NN(best_model, grid_search, X_train, y_train, X_val, y_val)
+    evaluate_model_RF(best_model, grid_search, X_train, y_train, X_val, y_val)
     
     # predict on test set
     test_pred = best_model.predict(df_test)
@@ -471,6 +497,7 @@ def build_model_GDC():
 def train_model_GDC(grid_search, X_train, y_train):
     
     grid_search.fit(X_train, y_train)
+    print("Best Prrameters:", grid_search.best_params_ ,"(CV score=%0.3f)" % grid_search.best_score_)
     best_model = grid_search.best_estimator_
     
     return best_model
@@ -491,7 +518,7 @@ def evaluate_model_GDC(best_model, grid_search, X_train, y_train, X_val, y_val):
 
 def compute_prediction_GDC():
     df_train, df_test, df_index, df_submission= load_datasets()
-    X_train, y_train, X_val, y_val, df_test = preprocess_data_GDC(df_train, df_test)
+    X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
     grid_search = build_model_GDC()
     
     # train model
@@ -554,6 +581,7 @@ def build_model_SC():
 def train_model_SC(grid_search, X_train, y_train):
     
     grid_search.fit(X_train, y_train)
+    print("Best Prrameters:", grid_search.best_params_ ,"(CV score=%0.3f)" % grid_search.best_score_)
     best_model = grid_search.best_estimator_
     
     return best_model
@@ -563,7 +591,8 @@ def evaluate_model_SC(best_model, grid_search, X_train, y_train, X_val, y_val):
     pred = best_model.predict(X_train)
     error_rate = np.mean(y_train != pred)
     print("Train Error rate SC:", error_rate)
-    print("Train Accuracy SC:", accuracy_score(y_train, pred)) 
+    print("Balanced Train Accuracy SC:", balanced_accuracy_score(y_train, pred))
+    print("Train Accuracy SC:", accuracy_score(y_train, pred))
 
     pred_val = best_model.predict(X_val)
     error_rate = np.mean(y_val != pred_val)
@@ -574,7 +603,7 @@ def evaluate_model_SC(best_model, grid_search, X_train, y_train, X_val, y_val):
     
 def compute_prediction_SC():
     df_train, df_test, df_index, df_submission= load_datasets()
-    X_train, y_train, X_val, y_val, df_test = preprocess_data_SC(df_train, df_test)
+    X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
     grid_search = build_model_SC()
     
     # train model
@@ -594,12 +623,98 @@ def compute_prediction_SC():
     
     return df_submission
 
+def build_model_final_RF(X_train, y_train):
+    # Random Forest model with default parameters
+    model = RandomForestClassifier(max_depth=10, min_samples_leaf=1, min_samples_split=10, n_estimators=30)
+    model.fit(X_train, y_train)
+    
+    return model
+
+def evaluate_model_final_RF(model, X_train, y_train, X_val, y_val):
+        
+    pred = model.predict(X_train)
+    error_rate = np.mean(y_train != pred)
+    print("Train Error rate final RF:", error_rate)
+    print("Train Accuracy final RF:", accuracy_score(y_train, pred)) 
+    
+    pred_val = model.predict(X_val)
+    error_rate = np.mean(y_val != pred_val)
+    print("Validation Error rate final RF:", error_rate)
+    print("Validation Accuracy final RF:", accuracy_score(y_val, pred_val))
+    balanced_accuracy = balanced_accuracy_score(y_val, pred_val)
+    print("Balanced Validation Accuracy final RF:", balanced_accuracy)
+    
+    return balanced_accuracy
+
+def compute_prediction_final_RF():
+    df_train, df_test, df_index, df_submission= load_datasets()
+    X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
+    model = build_model_final_RF(X_train, y_train)
+    
+    balanced_accuracy = evaluate_model_final_RF(model, X_train, y_train, X_val, y_val)
+    
+    # predict on test set
+    test_pred = model.predict(df_test)
+    
+    # match predictions with index
+    df_index['test_pred'] = test_pred
+    df_submission['prediction_baisc_RF'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(
+        df_submission['id']).values
+    df_submission['prediction_baisc_RF'] = df_submission['prediction_baisc_RF'].fillna(0.0)
+    df_submission['prediction_baisc_RF'] = df_submission['prediction_baisc_RF'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
+    
+    return df_submission, balanced_accuracy
+
+def build_model_final_GDC(X_train, y_train):
+    # Gradient Boosting model with default parameters
+    model = GradientBoostingClassifier(learning_rate=0.1, max_depth=6, max_features=0.6, min_samples_leaf=1, min_samples_split=2, n_estimators=200, subsample=0.6)
+    model.fit(X_train, y_train)
+    
+    return model
+
+def evaluate_model_final_GDC(model, X_train, y_train, X_val, y_val):
+            
+    pred = model.predict(X_train)
+    error_rate = np.mean(y_train != pred)
+    print("Train Error rate final GDC:", error_rate)
+    print("Train Accuracy final GDC:", accuracy_score(y_train, pred)) 
+            
+    pred_val = model.predict(X_val)
+    error_rate = np.mean(y_val != pred_val)
+    print("Validation Error rate final GDC:", error_rate)
+    print("Validation Accuracy final GDC:", accuracy_score(y_val, pred_val)) 
+    balanced_accuracy = balanced_accuracy_score(y_val, pred_val)
+    print("Balanced Validation Accuracy final GDC:", balanced_accuracy)
+    
+    return balanced_accuracy
+
+def compute_prediction_final_GDC():
+    df_train, df_test, df_index, df_submission= load_datasets()
+    X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
+    model = build_model_final_GDC(X_train, y_train)
+    
+    balanced_accuracy = evaluate_model_final_GDC(model, X_train, y_train, X_val, y_val)
+    
+    # predict on test set
+    test_pred = model.predict(df_test)
+    
+    # match predictions with index
+    df_index['test_pred'] = test_pred
+    df_submission['prediction_baisc_GDC'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(
+        df_submission['id']).values
+    df_submission['prediction_baisc_GDC'] = df_submission['prediction_baisc_GDC'].fillna(0.0)
+    df_submission['prediction_baisc_GDC'] = df_submission['prediction_baisc_GDC'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
+    
+    return df_submission, balanced_accuracy
+    
 def main():
     datacleaning()
-    compute_prediction_NN()
+    df_submisson_NN, balanced_accuracy_NN =  compute_prediction_NN()
     #compute_prediction_RF()
     #compute_prediction_GDC()
-    compute_prediction_SC()
+    #compute_prediction_SC()
+    df_submission_RF, balaced_accuracy_RF =  compute_prediction_final_RF()
+    df_submission_GDC, balaced_accuracy_GDC =  compute_prediction_final_GDC()
 
 if __name__ == "__main__":
     main()
