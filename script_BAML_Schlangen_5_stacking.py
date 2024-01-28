@@ -22,6 +22,8 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import StackingClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.decomposition import PCA
+from joblib import parallel_backend
+        
 
 # load the data
 file_path_requests = "requests.csv"
@@ -242,9 +244,6 @@ def load_datasets():
     df_index = pd.read_csv('test_set_id.csv')
     df_submission = pd.read_csv('pub_YwCznU3.csv')
     
-    print(df_index.info())
-    print(df_submission.info())
-    
     return df_train, df_test, df_index, df_submission
 
 def preprocess_data(df_train, df_test):
@@ -268,6 +267,9 @@ def preprocess_data(df_train, df_test):
                         'requests_Time']
 
     # Initialize the StandardScaler
+    
+    
+
     scaler = StandardScaler()
 
     # Scale the specified columns for the training data
@@ -283,12 +285,12 @@ def preprocess_data(df_train, df_test):
 
     # Concatenate scaled columns back with unscaled columns
     X_val = pd.concat([X_val_scaled, X_val.drop(columns=columns_to_scale)], axis=1)
-    
+
     pca = PCA()
 
     smote = SMOTE()
     X_train, y_train = smote.fit_resample(X_train, y_train)
-    
+
     df_test = df_test.values
 
     return X_train, y_train, X_val, y_val, df_test
@@ -332,9 +334,9 @@ def build_model_NN(input_shape):
 
 def train_model_NN(model, X_train, y_train, X_val, y_val):
     # Training the model
-    history = model.fit(X_train, y_train, epochs=20, batch_size=64, validation_data=(X_val, y_val))
+    history = model.fit(X_train, y_train, epochs=40, batch_size=64, validation_data=(X_val, y_val))
 
-    return history
+    return model, history
 
 def evaluate_model_NN(model, X_val, y_val):
     # Evaluating the model
@@ -361,7 +363,7 @@ def compute_prediction_NN():
     model = build_model_NN(input_shape=(X_train.shape[1],))
     
     # train model
-    history = train_model_NN(model, X_train, y_train, X_val, y_val)
+    model, history = train_model_NN(model, X_train, y_train, X_val, y_val)
 
     balanced_accuracy = evaluate_model_NN(model, X_val, y_val)
     
@@ -377,24 +379,6 @@ def compute_prediction_NN():
     
     return df_submission, balanced_accuracy
 
-def preprocess_data_RF(df_train, df_test):
-    df_train = df_train.astype('float32')
-    df_test = df_test.astype('float32')
-    
-    # Splitting the data
-    
-    X = df_train.drop(columns=['reviews_Like_True'])
-    y = df_train['reviews_Like_True'].astype(int)  # Ensure correct encoding
-
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=0)
-
-    # Normalizing the data
-    
-    smote = SMOTE()
-    X_train, y_train = smote.fit_resample(X_train, y_train)
-
-    return X_train, y_train, X_val, y_val, df_test
-
 def build_model_RF():
     # Random Forest model with default parameters
     model = RandomForestClassifier()
@@ -408,6 +392,8 @@ def build_model_RF():
     }
 
     # Perform grid search to find the best parameters
+    
+    
     grid_search = GridSearchCV(estimator=model, scoring="balanced_accuracy", param_grid=param_grid, cv=5)
 
     return grid_search
@@ -456,37 +442,17 @@ def compute_prediction_RF():
     
     return df_submission
 
-def preprocess_data_GDC(df_train, df_test):
-    df_train = df_train.astype('float32')
-    df_test = df_test.astype('float32')
-    
-    # Splitting the data
-    
-    X = df_train.drop(columns=['reviews_Like_True'])
-    y = df_train['reviews_Like_True'].astype(int)  # Ensure correct encoding
-
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=0)
-
-    # Normalizing the data
-    
-    smote = SMOTE()
-    X_train, y_train = smote.fit_resample(X_train, y_train)
-
-    return X_train, y_train, X_val, y_val, df_test
-
 def build_model_GDC():
     # Gradient Boosting model with default parameters
     model = GradientBoostingClassifier()
 
     # Define the parameter grid for grid search
     param_grid = {
-        'learning_rate': [0.001, 0.01, 0.1, 0.2],
-        'n_estimators': [50, 100, 150, 200],
-        'max_depth': [3, 4, 5, 6],
-        'min_samples_split': [2, 4, 6],
-        'min_samples_leaf': [1, 2, 4],
-        'subsample': [0.6, 0.8, 1.0],
-        'max_features': ['auto', 'sqrt', 'log2', 0.3, 0.6, 0.9]
+        'learning_rate': [0.001, 0.1, 0.3],
+        'n_estimators': [100, 200],
+        'max_depth': [2,10],
+        'min_samples_split': [2],
+        'min_samples_leaf': [2]
     }
 
     # Perform grid search to find the best parameters
@@ -496,7 +462,9 @@ def build_model_GDC():
 
 def train_model_GDC(grid_search, X_train, y_train):
     
-    grid_search.fit(X_train, y_train)
+    with parallel_backend('threading', n_jobs=16):
+        grid_search.fit(X_train, y_train)
+        
     print("Best Prrameters:", grid_search.best_params_ ,"(CV score=%0.3f)" % grid_search.best_score_)
     best_model = grid_search.best_estimator_
     
@@ -504,17 +472,18 @@ def train_model_GDC(grid_search, X_train, y_train):
 
 def evaluate_model_GDC(best_model, grid_search, X_train, y_train, X_val, y_val):
     
+    
     pred = best_model.predict(X_train)
     error_rate = np.mean(y_train != pred)
-    print("Train Error rate RF:", error_rate)
+    print("Train Error rate GDC:", error_rate)
     print("Train Accuracy RF:", accuracy_score(y_train, pred)) 
 
     pred_val = best_model.predict(X_val)
     error_rate = np.mean(y_val != pred_val)
-    print("Validation Error rate RF:", error_rate)
-    print("Validation Accuracy RF:", accuracy_score(y_val, pred_val)) 
-    print("Balanced Validation Accuracy RF:", balanced_accuracy_score(y_val, pred_val))
-    print("Score on validation set: RF", grid_search.score(X_val, y_val.values.ravel()))
+    print("Validation Error rate GDC:", error_rate)
+    print("Validation Accuracy GDC:", accuracy_score(y_val, pred_val)) 
+    print("Balanced Validation Accuracy GDC:", balanced_accuracy_score(y_val, pred_val))
+    print("Score on validation set: GDC", grid_search.score(X_val, y_val.values.ravel()))
 
 def compute_prediction_GDC():
     df_train, df_test, df_index, df_submission= load_datasets()
@@ -537,24 +506,6 @@ def compute_prediction_GDC():
     df_submission['prediction_GDC'] = df_submission['prediction_GDC'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
     
     return df_submission
-
-def preprocess_data_SC(df_train, df_test):
-    df_train = df_train.astype('float32')
-    df_test = df_test.astype('float32')
-    
-    # Splitting the data
-    
-    X = df_train.drop(columns=['reviews_Like_True'])
-    y = df_train['reviews_Like_True'].astype(int)  # Ensure correct encoding
-
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=0)
-
-    # Normalizing the data
-    
-    smote = SMOTE()
-    X_train, y_train = smote.fit_resample(X_train, y_train)
-
-    return X_train, y_train, X_val, y_val, df_test
 
 def build_model_SC():
     
@@ -667,24 +618,26 @@ def compute_prediction_final_RF():
 
 def build_model_final_GDC(X_train, y_train):
     # Gradient Boosting model with default parameters
-    model = GradientBoostingClassifier(learning_rate=0.1, max_depth=6, max_features=0.6, min_samples_leaf=1, min_samples_split=2, n_estimators=200, subsample=0.6)
-    model.fit(X_train, y_train)
+    
+    model = GradientBoostingClassifier(learning_rate=0.1, max_depth=10, min_samples_leaf=2, min_samples_split=2, n_estimators=100)
+    with parallel_backend('threading', n_jobs=16): 
+        model.fit(X_train, y_train)
     
     return model
 
 def evaluate_model_final_GDC(model, X_train, y_train, X_val, y_val):
+    with parallel_backend('threading', n_jobs=16):        
+        pred = model.predict(X_train)
+        error_rate = np.mean(y_train != pred)
+        print("Train Error rate final GDC:", error_rate)
+        print("Train Accuracy final GDC:", accuracy_score(y_train, pred)) 
             
-    pred = model.predict(X_train)
-    error_rate = np.mean(y_train != pred)
-    print("Train Error rate final GDC:", error_rate)
-    print("Train Accuracy final GDC:", accuracy_score(y_train, pred)) 
-            
-    pred_val = model.predict(X_val)
-    error_rate = np.mean(y_val != pred_val)
-    print("Validation Error rate final GDC:", error_rate)
-    print("Validation Accuracy final GDC:", accuracy_score(y_val, pred_val)) 
-    balanced_accuracy = balanced_accuracy_score(y_val, pred_val)
-    print("Balanced Validation Accuracy final GDC:", balanced_accuracy)
+        pred_val = model.predict(X_val)
+        error_rate = np.mean(y_val != pred_val)
+        print("Validation Error rate final GDC:", error_rate)
+        print("Validation Accuracy final GDC:", accuracy_score(y_val, pred_val)) 
+        balanced_accuracy = balanced_accuracy_score(y_val, pred_val)
+        print("Balanced Validation Accuracy final GDC:", balanced_accuracy)
     
     return balanced_accuracy
 
@@ -706,15 +659,70 @@ def compute_prediction_final_GDC():
     df_submission['prediction_baisc_GDC'] = df_submission['prediction_baisc_GDC'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
     
     return df_submission, balanced_accuracy
+
+def build_model_final_SC(X_train, y_train):
     
+    with parallel_backend('threading', n_jobs=16):
+        # Define base estimators
+        base_estimators = [
+            ('rf', RandomForestClassifier(max_depth=10, min_samples_leaf=1, min_samples_split=10, n_estimators=30)),
+            ('gb', GradientBoostingClassifier(learning_rate=0.1, max_depth=10, min_samples_leaf=2, min_samples_split=2, n_estimators=100))
+        ]
+    
+    
+        model = StackingClassifier(estimators=base_estimators, final_estimator=LogisticRegression())
+    
+    
+        model.fit(X_train, y_train)
+        
+    return model
+
+def evaluate_model_final_SC(model, X_train, y_train, X_val, y_val):
+    
+    with parallel_backend('threading', n_jobs=16):       
+          
+        pred = model.predict(X_train)
+        error_rate = np.mean(y_train != pred)
+        print("Train Error rate final SC:", error_rate)
+        print("Balanced Train Accuracy final SC:", balanced_accuracy_score(y_train, pred))
+        print("Train Accuracy final SC:", accuracy_score(y_train, pred))
+                
+        pred_val = model.predict(X_val)
+        error_rate = np.mean(y_val != pred_val)
+        print("Validation Error rate final SC:", error_rate)
+        print("Validation Accuracy final SC:", accuracy_score(y_val, pred_val)) 
+        print("Balanced Validation Accuracy final SC:", balanced_accuracy_score(y_val, pred_val))
+        
+    return balanced_accuracy_score(y_val, pred_val)
+
+def compute_prediction_final_SC():
+    df_train, df_test, df_index, df_submission= load_datasets()
+    X_train, y_train, X_val, y_val, df_test = preprocess_data(df_train, df_test)
+    model = build_model_final_SC(X_train, y_train)
+    
+    balanced_accuracy = evaluate_model_final_SC(model, X_train, y_train, X_val, y_val)
+    
+    # predict on test set
+    test_pred = model.predict(df_test)
+    
+    # match predictions with index
+    df_index['test_pred'] = test_pred
+    df_submission['prediction_baisc_SC'] = df_index.set_index('reviews_TestSetId')['test_pred'].reindex(
+        df_submission['id']).values
+    df_submission['prediction_baisc_SC'] = df_submission['prediction_baisc_SC'].fillna(0.0)
+    df_submission['prediction_baisc_SC'] = df_submission['prediction_baisc_SC'].apply(lambda x: 0 if x < 0.5 else 1).astype(int)
+    
+    return df_submission, balanced_accuracy
+
 def main():
     datacleaning()
-    df_submisson_NN, balanced_accuracy_NN =  compute_prediction_NN()
+    #df_submisson_NN, balanced_accuracy_NN = compute_prediction_NN()
     #compute_prediction_RF()
     #compute_prediction_GDC()
     #compute_prediction_SC()
-    df_submission_RF, balaced_accuracy_RF =  compute_prediction_final_RF()
-    df_submission_GDC, balaced_accuracy_GDC =  compute_prediction_final_GDC()
+    #df_submission_RF, balaced_accuracy_RF = compute_prediction_final_RF()
+    #df_submission_GDC, balaced_accuracy_GDC = compute_prediction_final_GDC()
+    df_submission_SC, balaced_accuracy_SC = compute_prediction_final_SC()
 
 if __name__ == "__main__":
     main()
