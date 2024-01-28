@@ -669,9 +669,7 @@ def build_model_final_SC(X_train, y_train):
             ('gb', GradientBoostingClassifier(learning_rate=0.1, max_depth=10, min_samples_leaf=2, min_samples_split=2, n_estimators=100))
         ]
     
-    
         model = StackingClassifier(estimators=base_estimators, final_estimator=LogisticRegression())
-    
     
         model.fit(X_train, y_train)
         
